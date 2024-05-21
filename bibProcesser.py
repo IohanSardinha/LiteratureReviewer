@@ -33,7 +33,7 @@ def mergeEntries(entriesList):
     return addCitationByYear(list(entriesHash.values())), repeated
 
 def orderEntries(e, key):
-    return e[key] if key in e else 0
+    return int(e[key]) if key in e else 0
 
 def sortEntries(entries, key, reverse=True):
     return sorted(entries, key=lambda e: orderEntries(e, key), reverse=reverse)

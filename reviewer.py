@@ -2,9 +2,8 @@ from pywebio import start_server, config
 from pywebio.input import *
 from pywebio.output import *
 from pywebio.pin import put_file_upload, put_input, put_checkbox, put_select, pin, pin_update
-from os import path
+from helper import *
 import bibProcesser
-import pickle
 import re
 
 #####################################################################################
@@ -12,6 +11,7 @@ import re
 #####################################################################################
 entries = []
 merged_entries = []
+user_lists = {}
 
 sort_key = "citation-per-year"
 sort_asc = False
@@ -21,17 +21,6 @@ entries_keys = []
 #####################################################################################
 # Procedures
 #####################################################################################
-def saveData(variable, name):
-    with open(path.join(path.dirname(__file__),f"data/{name}"), "wb") as file:
-        pickle.dump(variable, file)
-
-def loadData(name):
-    if not path.isfile(path.join(path.dirname(__file__),f"data/{name}")): 
-        return
-    
-    with open(path.join(path.dirname(__file__),f"data/{name}"), "rb") as file:
-        variable = pickle.load(file)
-    return variable
 
 def addfile_Procedure():
     file = pin.bibFile
@@ -56,21 +45,32 @@ def importCitations():
     close_popup()
     mergeBibliography_Procedure()
 
-def checkCitations_Procedure():
+def getListName_Procedure():
+    if pin.list_name_from_select == "New list":
+        popup("New List",[
+                put_input("list_name_new_list", placeholder="List name"),
+                put_buttons(["Create","Cancel"], onclick=[lambda: checkCitations_Procedure(pin.list_name_new_list), close_popup])
+            ], closable=False)
+    else:
+        checkCitations_Procedure(pin.list_name_from_select)
+
+def checkCitations_Procedure(name):
     amountWithoutTimesCited = bibProcesser.lacksTimeCited(entries)
     if amountWithoutTimesCited > 0:
         popup(f"Found {amountWithoutTimesCited} articles without citation count",[
             put_text("Do you want to import this information? This may take some time"),
-            put_buttons(["Accept","Cancel"], onclick=[importCitations, mergeBibliography_Procedure])
+            put_buttons(["Accept","Cancel"], onclick=[importCitations, lambda: mergeBibliography_Procedure(name)])
         ], closable=False)
     else:
-        mergeBibliography_Procedure()
+        mergeBibliography_Procedure(name)
 
 
-def mergeBibliography_Procedure():
+def mergeBibliography_Procedure(name):
     global merged_entries, entries_keys
     
     merged_entries, repeated = bibProcesser.mergeEntries(entries)
+
+    user_lists[name] = {"entities": merged_entries}
 
     popup(f"Generated bibliography with {len(merged_entries)} entries", content=[
         f"Removed {repeated} repeated entries(by doi)",
@@ -165,7 +165,10 @@ def LoadBibliography_Screen(info=lambda:None):
 
     info()
     if len(entries) > 0:
-        put_button("Merge", onclick=checkCitations_Procedure, color="success")
+        put_row([
+            put_select("list_name_from_select", ["New list"]+list(user_lists.keys())),
+            put_button("Add to list", onclick=getListName_Procedure, color="success")
+        ])
 
 def viewBibliographies_Screen():
     global entries_keys
@@ -205,7 +208,7 @@ def viewBibliographies_Screen():
 
     table_row = lambda e: [e[key] if key in e else "-" for key in displaying_keys]
 
-    table = [[put_checkbox(f"selected_article_{i}",[""]),i+1]+table_row(e)+[doi(e)] for i,e in enumerate(merged_entries)]
+    table = [[put_checkbox(f"selected_article_{i}",[""]),i+1]+table_row(e)+[doi(e)] for i,e in enumerate(merged_entries) if int(e["year"]) >= 2018]
 
     put_table(table, header=[put_button("☑",onclick=selectAllArticles_Procedure)," "]+displaying_keys+["doi"])
 
@@ -218,6 +221,8 @@ def main_screen():
     if len(merged_entries) > 0:
         buttons_labels.append("View bibliography")
         buttons_actions.append(viewBibliographies_Screen)
+        put_text("Working on list:")
+        put_select("working_list",list(user_lists.keys()))
     
     put_buttons(buttons_labels, onclick=buttons_actions)
 
@@ -236,7 +241,8 @@ def loadAll():
 def main():
     config(css_style=".container{max-width: 90%};")
     loadAll()
-    start_server(main_screen,host="127.0.0.1", port=8080, auto_open_webbrowser=True)
+    #start_server(main_screen,host="127.0.0.1", port=8080, auto_open_webbrowser=True)
+    main_screen()
 
 if __name__ == '__main__':
     main()
